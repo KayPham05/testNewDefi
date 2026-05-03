@@ -1,0 +1,173 @@
+d:\DEFI-NCKH\com.Defi.DefiWebApp\server\demo/
+├── .gitattributes
+├── .gitignore
+├── .idea/
+├── .mvn/
+├── compose.yaml
+├── HELP.md
+├── mvnw
+├── mvnw.cmd
+├── pom.xml
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── com/example/demo/
+│   │   │       ├── BlockchainServerApplication.java
+│   │   │       ├── DemoApplication.java
+│   │   │       ├── application/
+│   │   │       │   ├── dto/
+│   │   │       │   │   ├── AuthResponse.java
+│   │   │       │   │   ├── NonceResponse.java
+│   │   │       │   │   ├── UserResponse.java
+│   │   │       │   │   ├── VerifySignatureRequest.java
+│   │   │       │   │   ├── request/
+│   │   │       │   │   └── response/
+│   │   │       │   ├── mapper/
+│   │   │       │   ├── service/
+│   │   │       │   │   └── AuthApplicationService.java
+│   │   │       │   └── usecase/
+│   │   │       ├── domain/
+│   │   │       │   ├── exception/
+│   │   │       │   │   └── InvalidSignatureException.java
+│   │   │       │   ├── model/
+│   │   │       │   ├── repository/
+│   │   │       │   └── service/
+│   │   │       │       └── SignatureVerifier.java
+│   │   │       ├── infrastructure/
+│   │   │       │   ├── blockchain/
+│   │   │       │   │   └── Web3SignatureVerifier.java
+│   │   │       │   ├── config/
+│   │   │       │   │   └── Web3Config.java
+│   │   │       │   ├── persistence/
+│   │   │       │   └── security/
+│   │   │       │       ├── JwtAuthenticationFilter.java
+│   │   │       │       └── SecurityConfig.java
+│   │   │       ├── presentation/
+│   │   │       │   └── controller/
+│   │   │       │       └── AuthController.java
+│   │   │       └── shared/
+│   │   │           └── util/
+│   │   │               └── NonceGenerator.java
+│   │   └── resources/
+│   │       ├── application.properties
+│   │       ├── static/
+│   │       └── templates/
+│   └── test/
+│       └── java/com/example/demo/
+│           └── DemoApplicationTests.java
+└── target/
+    ├── classes/
+    ├── generated-sources/
+    ├── generated-test-sources/
+    └── test-classes/
+
+
+Ngày 1:
+
+Luồng xử lý Frontend gửi lệnh xin Nonce cho Backend thông qua POST http://localhost:8080/api/auth/nonce { "WalletAddress": "0x1234561000abcdef"}
+BE nhận xử lý thông qua Controller.AuthController
+AuthController xử lý lưu User vào db và gửi nonce cho FE
+
+# Tính năng: Generate Nonce cho Wallet Address
+
+## Mô tả chức năng
+Tính năng này cho phép người dùng nhận một mã nonce (number used once) duy nhất khi cung cấp địa chỉ ví (wallet address). Nonce này sẽ được sử dụng để ký và xác thực quyền sở hữu ví trong bước tiếp theo.
+
+## Luồng hoạt động (Flow)
+
+```
+Client → AuthController → AuthApplicationService → GenerateNonceUseCase → NonceGenerator
+                                                            ↓
+                                                      UserRepository
+                                                            ↓
+                                                    NonceResponse → Client
+```
+
+## Chi tiết từng bước
+
+### 1. Client gửi request
+```
+POST /api/auth/nonce
+Body: {
+  "walletAddress": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
+}
+```
+
+### 2. Presentation Layer - AuthController
+- Nhận request từ client với wallet address
+- Validate định dạng wallet address
+- Gọi `AuthApplicationService` để xử lý
+
+### 3. Application Layer - AuthApplicationService
+- Điều phối logic nghiệp vụ
+- Gọi `GenerateNonceUseCase` để tạo nonce
+
+### 4. Application Layer - GenerateNonceUseCase
+- Kiểm tra xem wallet address đã tồn tại trong hệ thống chưa
+- Nếu chưa tồn tại: tạo User mới với wallet address
+- Nếu đã tồn tại: lấy User hiện có
+- Gọi `NonceGenerator` (shared/util) để tạo chuỗi nonce ngẫu nhiên
+- Lưu nonce vào User thông qua `UserRepository`
+- Trả về nonce
+
+### 5. Domain Layer - UserRepository
+- Interface định nghĩa các phương thức tương tác với User
+- Được implement bởi `JpaUserRepository` ở Infrastructure layer
+- Lưu/cập nhật thông tin User và nonce vào database
+
+### 6. Shared Layer - NonceGenerator
+- Tạo chuỗi nonce ngẫu nhiên (ví dụ: UUID hoặc random string)
+- Đảm bảo tính duy nhất của nonce
+
+### 7. Response trả về Client
+```json
+{
+  "walletAddress": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+  "nonce": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "message": "Please sign this nonce to verify wallet ownership"
+}
+```
+
+## Kiến trúc phân lớp
+
+### Presentation Layer
+- `AuthController`: REST API endpoint nhận request
+
+### Application Layer
+- `AuthApplicationService`: Điều phối use case
+- `GenerateNonceUseCase`: Logic nghiệp vụ tạo nonce
+- `NonceResponse`: DTO trả về client
+
+### Domain Layer
+- `User`: Entity chứa thông tin user và wallet
+- `WalletAddress`: Value object đại diện địa chỉ ví
+- `UserRepository`: Interface repository
+
+### Infrastructure Layer
+- `JpaUserRepository`: Implement repository với JPA
+- `UserEntity`: Entity mapping với database
+- `UserMapper`: Chuyển đổi giữa Domain model và Entity
+
+### Shared Layer
+- `NonceGenerator`: Utility tạo nonce
+
+## Mục đích của Nonce
+Nonce được tạo ra để:
+1. Đảm bảo mỗi request xác thực là duy nhất
+2. Ngăn chặn replay attack
+3. Người dùng sẽ ký nonce này bằng private key của ví
+4. Server sẽ verify chữ ký để xác nhận quyền sở hữu ví
+
+## Bước tiếp theo
+Sau khi nhận được nonce, client sẽ:
+1. Sử dụng MetaMask/Web3 để ký nonce
+2. Gửi signature lên server qua endpoint verify
+3. Server xác thực signature và cấp JWT token
+
+## Lưu ý config trước file application.properties
+spring.application.name=demo
+spring.datasource.url=jdbc:sqlserver://localhost:1433;databaseName=Defi-Blockchain;encrypt=false
+spring.datasource.username=sa
+spring.datasource.password=yourpassword
+spring.datasource.driver-class-name=com.microsoft.sqlserver.jdbc.SQLServerDriver
+spring.docker.compose.enabled=false
